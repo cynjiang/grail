@@ -2,6 +2,7 @@ const JUNK = new Set([
   'fbclid', 'gclid', 'dclid', 'msclkid', 'igshid', 'yclid', 'mc_cid', 'mc_eid', 'ref', 'ref_',
   'faceout', 'seq', 'cmp', 'cid', 'ranmid', 'raneaid', 'ransiteid', 'irclickid', 'irgwc',
   'clickid', 'affid', '_ga', 'srsltid', 'cm_mmc', 'cm_sp', 'ito', 'icid', 'sid',
+  'pagefm', 'prodvm', 'gridproductposition', 'categoryid', 'catalogid',
 ])
 
 export function cleanUrl(raw: string): string {
@@ -24,6 +25,22 @@ export function storeName(raw: string): string {
     const short = n.replace(/(co|shop|store)$/, '')
     if (short.length >= 4) n = short
     return n.charAt(0).toUpperCase() + n.slice(1)
+  } catch {
+    return ''
+  }
+}
+
+export function slugTitle(raw: string): string {
+  try {
+    const segs = new URL(raw).pathname.split('/').filter(Boolean)
+    const slug = segs.reverse().find((s) => s.includes('-') && !/^\d+$/.test(s))
+    if (!slug) return ''
+    return slug
+      .replace(/-\d{5,}$/, '')
+      .split('-')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
   } catch {
     return ''
   }
