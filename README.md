@@ -90,3 +90,10 @@ vite.config.ts         vite + tailwind + offline (pwa) setup
 react, typescript, vite, tailwind, dexie (indexedDB) and vite-plugin-pwa.
 
 link lookup is one serverless function in `api/metadata.ts`.
+
+## roadmap
+
+- drag and drop image uploads
+- smarter link/image fallbacks for sites like pinterest and storefronts that block basic scrapers
+- filtering & sorting on wishlist (by brand, price, status, etc)
+- tag search / multi-tag filtering on inspo
