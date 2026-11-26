@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Check, ExternalLink, LayoutGrid, List, Pencil, ShoppingBag, Undo2 } from 'lucide-react'
-import { db, type ShopItem } from '../db'
+import { db, type WishlistItem } from '../db'
 import { useObjectUrl } from '../utils/useObjectUrl'
 
 type View = 'grid' | 'list'
@@ -15,7 +15,7 @@ const actionBtn = `grid h-8 w-8 place-items-center rounded-full ${glowSurface}`
 const brandPill =
   'inline-block rounded-full border border-stone-200/70 bg-stone-100/90 px-2.5 py-0.5 text-[10px] font-medium tracking-wide text-stone-800 backdrop-blur-md dark:border-white/10 dark:bg-white/15 dark:text-stone-100 dark:shadow-[0_0_12px_rgba(255,255,255,0.1)]'
 
-function GridCard({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
+function GridCard({ s, onEdit }: { s: WishlistItem; onEdit: () => void }) {
   const src = useObjectUrl(s.image)
   const [loaded, setLoaded] = useState(false)
   const bought = s.status === 'bought'
@@ -48,7 +48,7 @@ function GridCard({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
           aria-label={bought ? 'move back to wishlist' : 'mark as bought'}
           onClick={(e) => {
             e.stopPropagation()
-            db.shop.update(s.id!, { status: bought ? 'want' : 'bought' })
+            db.wishlist.update(s.id!, { status: bought ? 'want' : 'bought' })
           }}
           className={`absolute right-2.5 top-2.5 ${actionBtn}`}
         >
@@ -92,7 +92,7 @@ function GridCard({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
   )
 }
 
-function ListRow({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
+function ListRow({ s, onEdit }: { s: WishlistItem; onEdit: () => void }) {
   const src = useObjectUrl(s.image)
   const [loaded, setLoaded] = useState(false)
   const bought = s.status === 'bought'
@@ -164,7 +164,7 @@ function ListRow({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
           </button>
           <button
             aria-label={bought ? 'move back to wishlist' : 'mark as bought'}
-            onClick={() => db.shop.update(s.id!, { status: bought ? 'want' : 'bought' })}
+            onClick={() => db.wishlist.update(s.id!, { status: bought ? 'want' : 'bought' })}
             className={actionBtn}
           >
             {bought ? <Undo2 size={14} /> : <Check size={14} />}
@@ -175,8 +175,8 @@ function ListRow({ s, onEdit }: { s: ShopItem; onEdit: () => void }) {
   )
 }
 
-export default function Shopping({ onEdit }: { onEdit: (item: ShopItem) => void }) {
-  const items = useLiveQuery(() => db.shop.orderBy('createdAt').reverse().toArray(), []) ?? []
+export default function Wishlist({ onEdit }: { onEdit: (item: WishlistItem) => void }) {
+  const items = useLiveQuery(() => db.wishlist.orderBy('createdAt').reverse().toArray(), []) ?? []
   const [view, setView] = useState<View>(() => (localStorage.getItem('grail-view') as View) || 'grid')
 
   const setAndSaveView = (v: View) => {
@@ -188,7 +188,7 @@ export default function Shopping({ onEdit }: { onEdit: (item: ShopItem) => void 
   const done = items.filter((i) => i.status === 'bought')
   const total = want.reduce((n, i) => n + (i.price ?? 0), 0)
 
-  const renderItems = (list: ShopItem[]) =>
+  const renderItems = (list: WishlistItem[]) =>
     view === 'grid' ? (
       <div key="grid" className="animate-fade-up grid grid-cols-2 gap-x-3.5 gap-y-6 md:grid-cols-3 lg:grid-cols-4">
         {list.map((s) => (

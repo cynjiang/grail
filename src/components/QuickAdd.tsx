@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ImagePlus, Link2, Loader2, Trash2, X } from 'lucide-react'
-import { db, type ShopItem } from '../db'
+import { db, type WishlistItem } from '../db'
 import { cleanUrl, parseTags, slugTitle, storeName } from '../utils/urlCleaner'
 import { useObjectUrl } from '../utils/useObjectUrl'
 
-type Mode = 'shop' | 'inspo'
+type Mode = 'wishlist' | 'inspo'
 
 const field =
   'w-full rounded-xl bg-stone-100/90 px-3.5 py-2.5 text-sm text-stone-900 placeholder:text-stone-400 outline-none ring-1 ring-transparent transition focus:bg-white focus:ring-stone-900/20 dark:bg-white/[0.06] dark:text-stone-100 dark:placeholder:text-stone-500 dark:focus:bg-white/[0.09] dark:focus:ring-white/25'
@@ -13,7 +13,7 @@ const IMG_URL = /\.(jpe?g|png|webp|gif|avif)(\?|$)/i
 
 interface Props {
   initial: Mode
-  editing?: ShopItem
+  editing?: WishlistItem
   initialBlob?: Blob
   initialUrl?: string
   onClose: () => void
@@ -22,7 +22,7 @@ interface Props {
 
 export default function QuickAdd({ initial, editing, initialBlob, initialUrl, onClose, onToast }: Props) {
   const isEdit = !!editing
-  const [mode, setMode] = useState<Mode>(editing ? 'shop' : initial)
+  const [mode, setMode] = useState<Mode>(editing ? 'wishlist' : initial)
   const [url, setUrl] = useState(editing?.url ?? initialUrl ?? '')
   const [blob, setBlob] = useState<Blob | undefined>(editing?.image ?? initialBlob)
   const [title, setTitle] = useState(editing?.title ?? '')
@@ -114,14 +114,14 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
   }, [applyBlob, lookup, requestClose])
 
   const canSave =
-    mode === 'shop'
+    mode === 'wishlist'
       ? !!(title.trim() || blob || url.trim() || store.trim())
       : !!blob
 
   async function save() {
     if (!canSave) return
     const parsedPrice = price.trim() ? Number(price) : undefined
-    if (mode === 'shop') {
+    if (mode === 'wishlist') {
       const payload = {
         title: title.trim() || undefined,
         price: parsedPrice != null && !Number.isNaN(parsedPrice) ? parsedPrice : undefined,
@@ -131,10 +131,10 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
         notes: notes.trim() || undefined,
       }
       if (editing?.id) {
-        await db.shop.update(editing.id, payload)
+        await db.wishlist.update(editing.id, payload)
         onToast('changes saved')
       } else {
-        await db.shop.add({ ...payload, status: 'want', createdAt: Date.now() })
+        await db.wishlist.add({ ...payload, status: 'want', createdAt: Date.now() })
         onToast('added to wishlist')
       }
     } else {
@@ -155,7 +155,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
       setConfirmDel(true)
       return
     }
-    await db.shop.delete(editing.id)
+    await db.wishlist.delete(editing.id)
     onToast('item deleted')
     requestClose()
   }
@@ -189,7 +189,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
             <span className="text-sm font-medium text-stone-900 dark:text-stone-100">edit item</span>
           ) : (
             <div className="inline-flex rounded-full bg-stone-200/75 p-1 dark:bg-white/[0.07]">
-              {(['shop', 'inspo'] as const).map((m) => (
+              {(['wishlist', 'inspo'] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
@@ -199,7 +199,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
                       : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
                   }`}
                 >
-                  {m === 'shop' ? 'wishlist' : 'inspo'}
+                  {m}
                 </button>
               ))}
             </div>
@@ -269,7 +269,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
         <div>
           <div
             className={`grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              mode === 'shop' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+              mode === 'wishlist' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
             }`}
           >
             <div className="overflow-hidden">

@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 
-export interface ShopItem {
+export interface WishlistItem {
   id?: number
   image?: Blob
   title?: string
@@ -21,12 +21,12 @@ export interface InspoItem {
 }
 
 class GrailDB extends Dexie {
-  shop!: Table<ShopItem, number>
+  wishlist!: Table<WishlistItem, number>
   inspo!: Table<InspoItem, number>
   constructor() {
     super('grail')
     this.version(1).stores({
-      shop: '++id, status, createdAt',
+      wishlist: '++id, status, createdAt',
       inspo: '++id, *tags, createdAt',
     })
   }

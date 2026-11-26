@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, Moon, Settings, Sun, Upload } from 'lucide-react'
-import Shopping from './components/Shopping'
+import Wishlist from './components/Wishlist'
 import Inspo from './components/Inspo'
 import QuickAdd from './components/QuickAdd'
-import { db, type ShopItem } from './db'
+import { db, type WishlistItem } from './db'
 import { exportBackup, importBackup } from './utils/backup'
 
-type Tab = 'shop' | 'inspo'
+type Tab = 'wishlist' | 'inspo'
 
 function FourPointStar({ className = '' }: { className?: string }) {
   return (
@@ -163,9 +163,9 @@ function StarScrollbar() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('shop')
+  const [tab, setTab] = useState<Tab>('wishlist')
   const [adding, setAdding] = useState(false)
-  const [editing, setEditing] = useState<ShopItem>()
+  const [editing, setEditing] = useState<WishlistItem>()
   const [pastedBlob, setPastedBlob] = useState<Blob>()
   const [pastedUrl, setPastedUrl] = useState<string>()
   const [menu, setMenu] = useState(false)
@@ -233,7 +233,7 @@ export default function App() {
                 tab === 'inspo' ? 'translate-x-full' : 'translate-x-0'
               }`}
             />
-            {(['shop', 'inspo'] as const).map((t) => (
+            {(['wishlist', 'inspo'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -243,7 +243,7 @@ export default function App() {
                     : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
                 }`}
               >
-                {t === 'shop' ? 'wishlist' : 'inspo'}
+                {t}
               </button>
             ))}
           </nav>
@@ -309,8 +309,8 @@ export default function App() {
       </header>
 
       <main className="flex-1 pb-12">
-        {tab === 'shop' ? (
-          <Shopping onEdit={(item) => setEditing(item)} />
+        {tab === 'wishlist' ? (
+          <Wishlist onEdit={(item) => setEditing(item)} />
         ) : (
           <Inspo onToast={showToast} />
         )}
