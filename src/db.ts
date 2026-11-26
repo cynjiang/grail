@@ -3,7 +3,7 @@ import Dexie, { type Table } from 'dexie'
 export interface ShopItem {
   id?: number
   image?: Blob
-  title: string
+  title?: string
   price?: number
   store: string
   url?: string
