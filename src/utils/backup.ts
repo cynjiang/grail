@@ -22,19 +22,19 @@ export async function exportBackup() {
       image: await toB64(image),
     })),
   )
-  const blob = new Blob([JSON.stringify({ app: 'grail', version: 1, wishlist, inspo })], {
+  const blob = new Blob([JSON.stringify({ app: 'starinspo', version: 1, wishlist, inspo })], {
     type: 'application/json',
   })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = `grail-backup-${new Date().toISOString().slice(0, 10)}.json`
+  a.download = `starinspo-backup-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
 
 export async function importBackup(file: File) {
   const data = JSON.parse(await file.text())
-  if (data.app !== 'grail') throw new Error('not a grail backup file')
+  if (data.app !== 'starinspo') throw new Error('not a starinspo backup file')
   const wishlist = await Promise.all(
     (data.wishlist ?? []).map(async (s: any) => ({ ...s, image: await toBlob(s.image) })),
   )

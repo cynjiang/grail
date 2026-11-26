@@ -177,11 +177,11 @@ function ListRow({ s, onEdit }: { s: WishlistItem; onEdit: () => void }) {
 
 export default function Wishlist({ onEdit }: { onEdit: (item: WishlistItem) => void }) {
   const items = useLiveQuery(() => db.wishlist.orderBy('createdAt').reverse().toArray(), []) ?? []
-  const [view, setView] = useState<View>(() => (localStorage.getItem('grail-view') as View) || 'grid')
+  const [view, setView] = useState<View>(() => (localStorage.getItem('starinspo-view') as View) || 'grid')
 
   const setAndSaveView = (v: View) => {
     setView(v)
-    localStorage.setItem('grail-view', v)
+    localStorage.setItem('starinspo-view', v)
   }
 
   const want = items.filter((i) => i.status === 'want')

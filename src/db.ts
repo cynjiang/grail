@@ -20,11 +20,11 @@ export interface InspoItem {
   createdAt: number
 }
 
-class GrailDB extends Dexie {
+class starinspoDB extends Dexie {
   wishlist!: Table<WishlistItem, number>
   inspo!: Table<InspoItem, number>
   constructor() {
-    super('grail')
+    super('starinspo')
     this.version(1).stores({
       wishlist: '++id, status, createdAt',
       inspo: '++id, *tags, createdAt',
@@ -32,4 +32,4 @@ class GrailDB extends Dexie {
   }
 }
 
-export const db = new GrailDB()
+export const db = new starinspoDB()

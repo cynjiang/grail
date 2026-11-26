@@ -171,7 +171,7 @@ export default function App() {
   const [menu, setMenu] = useState(false)
   const [toast, setToast] = useState('')
   const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('grail-theme')
+    const saved = localStorage.getItem('starinspo-theme')
     if (saved) return saved === 'dark'
     return window.matchMedia('(prefers-color-scheme: dark)').matches
   })
@@ -179,7 +179,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
-    localStorage.setItem('grail-theme', dark ? 'dark' : 'light')
+    localStorage.setItem('starinspo-theme', dark ? 'dark' : 'light')
   }, [dark])
 
   const showToast = (msg: string) => {
@@ -223,7 +223,7 @@ export default function App() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
           <span className="inline-flex items-center gap-1.5 font-serif-brand text-2xl italic tracking-tight">
             <FourPointStar className="h-3.5 w-3.5 text-stone-800 dark:text-stone-200" />
-            grail
+            starinspo
           </span>
 
           <nav className="relative grid grid-cols-2 rounded-full bg-stone-200/75 p-1 dark:bg-white/[0.07]">

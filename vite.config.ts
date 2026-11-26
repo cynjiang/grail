@@ -10,8 +10,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'grail',
-        short_name: 'grail',
+        name: 'starinspo',
+        short_name: 'starinspo',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#000000',
