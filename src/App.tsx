@@ -1,38 +1,290 @@
-import { useRef, useState } from 'react'
-import { Plus, Settings } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Download, Moon, Settings, Sun, Upload } from 'lucide-react'
 import Shopping from './components/Shopping'
 import Inspo from './components/Inspo'
 import QuickAdd from './components/QuickAdd'
+import { db, type ShopItem } from './db'
 import { exportBackup, importBackup } from './utils/backup'
 
 type Tab = 'shop' | 'inspo'
 
+function FourPointStar({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 1.2C12.95 7.5 16.5 11.05 22.8 12C16.5 12.95 12.95 16.5 12 22.8C11.05 16.5 7.5 12.95 1.2 12C7.5 11.05 11.05 7.5 12 1.2Z" />
+    </svg>
+  )
+}
+
+function BubblyPlus({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <rect x="9.75" y="4.5" width="4.5" height="15" rx="2.25" />
+      <rect x="4.5" y="9.75" width="15" height="4.5" rx="2.25" />
+    </svg>
+  )
+}
+
+function StarFab({ onClick }: { onClick: () => void }) {
+  const spinRef = useRef<HTMLDivElement>(null)
+  const angle = useRef(0)
+  const vel = useRef(0)
+  const hovered = useRef(false)
+  const target = useRef<number | null>(null)
+  const raf = useRef<number>(0)
+
+  const tick = () => {
+    if (hovered.current) {
+      target.current = null
+      vel.current += (1.2 - vel.current) * 0.08
+      angle.current += vel.current
+    } else {
+      if (target.current === null) {
+        target.current = Math.ceil(angle.current / 90) * 90
+      }
+      const rem = target.current - angle.current
+      if (rem <= 0.15 || vel.current <= 0.02) {
+        angle.current = target.current % 360
+        target.current = null
+        vel.current = 0
+        if (spinRef.current) {
+          spinRef.current.style.transform = `rotate(${angle.current}deg)`
+        }
+        raf.current = 0
+        return
+      }
+      const decel = (vel.current * vel.current) / (2 * rem)
+      vel.current = Math.max(0.02, vel.current - decel)
+      angle.current += Math.min(vel.current, rem)
+    }
+
+    if (spinRef.current) {
+      spinRef.current.style.transform = `rotate(${angle.current}deg)`
+    }
+    raf.current = requestAnimationFrame(tick)
+  }
+
+  const start = () => {
+    hovered.current = true
+    if (!raf.current) raf.current = requestAnimationFrame(tick)
+  }
+
+  const stop = () => {
+    hovered.current = false
+    if (!raf.current) raf.current = requestAnimationFrame(tick)
+  }
+
+  useEffect(() => () => cancelAnimationFrame(raf.current), [])
+
+  return (
+    <button
+      aria-label="quick add"
+      onClick={onClick}
+      onMouseEnter={start}
+      onMouseLeave={stop}
+      className="fixed bottom-6 right-9 z-30 grid h-16 w-16 place-items-center text-stone-900 drop-shadow-lg transition-transform duration-300 hover:scale-110 active:scale-95 dark:text-white"
+      style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
+    >
+      <div ref={spinRef} className="relative grid h-full w-full place-items-center will-change-transform">
+        <FourPointStar className="h-full w-full" />
+        <BubblyPlus className="absolute h-4 w-4 text-white dark:text-stone-950" />
+      </div>
+    </button>
+  )
+}
+
+function StarScrollbar() {
+  const [scrollable, setScrollable] = useState(false)
+  const trackRef = useRef<HTMLDivElement>(null)
+  const thumbRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    const sync = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight
+      setScrollable(max > 24)
+      const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0
+      if (thumbRef.current) {
+        thumbRef.current.style.top = `${ratio * 100}%`
+      }
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(document.body)
+    window.addEventListener('scroll', sync, { passive: true })
+    window.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+    }
+  }, [])
+
+  const scrollToClientY = (clientY: number) => {
+    if (!trackRef.current) return
+    const rect = trackRef.current.getBoundingClientRect()
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height))
+    const max = document.documentElement.scrollHeight - window.innerHeight
+    window.scrollTo({ top: ratio * max, behavior: 'instant' as ScrollBehavior })
+  }
+
+  if (!scrollable) return null
+
+  return (
+    <div
+      ref={trackRef}
+      role="scrollbar"
+      aria-label="page scroll"
+      onPointerDown={(e) => {
+        dragging.current = true
+        e.currentTarget.setPointerCapture(e.pointerId)
+        scrollToClientY(e.clientY)
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) scrollToClientY(e.clientY)
+      }}
+      onPointerUp={(e) => {
+        dragging.current = false
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      }}
+      className="group fixed right-2 top-1/2 z-20 flex h-[60vh] w-5 -translate-y-1/2 cursor-pointer touch-none justify-center select-none"
+    >
+      <div className="relative h-full w-[1.5px] rounded-full bg-stone-300/70 transition-colors group-hover:bg-stone-400/80 dark:bg-white/15 dark:group-hover:bg-white/25">
+        <div
+          ref={thumbRef}
+          className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-stone-800 transition-transform duration-150 group-hover:scale-125 dark:text-stone-200"
+          style={{ top: '0%' }}
+        >
+          <FourPointStar className="h-3.5 w-3.5" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>('shop')
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<ShopItem>()
+  const [pastedBlob, setPastedBlob] = useState<Blob>()
+  const [pastedUrl, setPastedUrl] = useState<string>()
   const [menu, setMenu] = useState(false)
+  const [toast, setToast] = useState('')
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('grail-theme')
+    if (saved) return saved === 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
   const file = useRef<HTMLInputElement>(null)
-  const item = 'block w-full px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-900'
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+    localStorage.setItem('grail-theme', dark ? 'dark' : 'light')
+  }, [dark])
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    window.setTimeout(() => setToast((t) => (t === msg ? '' : t)), 2400)
+  }
+
+  useEffect(() => {
+    if (adding || editing) return
+    const onPaste = async (e: ClipboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const img = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'))
+      if (img) {
+        e.preventDefault()
+        if (tab === 'inspo') {
+          await db.inspo.add({ image: img, tags: [], createdAt: Date.now() })
+          showToast('saved to inspo')
+        } else {
+          setPastedBlob(img)
+          setAdding(true)
+        }
+        return
+      }
+      const text = e.clipboardData?.getData('text').trim() ?? ''
+      if (/^https?:\/\/\S+$/i.test(text)) {
+        e.preventDefault()
+        setPastedUrl(text)
+        setAdding(true)
+      }
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [adding, editing, tab])
+
+  const menuItem =
+    'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-stone-700 transition hover:bg-stone-100 dark:text-stone-200 dark:hover:bg-white/10'
 
   return (
-    <div className="min-h-screen bg-white text-black dark:bg-black dark:text-white">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-black/90">
+    <div className="flex min-h-screen flex-col bg-[#FAF9F7] text-[#141413] transition-colors dark:bg-[#0E0E10] dark:text-[#F5F5F4]">
+      <header className="sticky top-0 z-30 border-b border-stone-200/70 bg-[#FAF9F7]/85 backdrop-blur-md dark:border-white/10 dark:bg-[#0E0E10]/85">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <span className="text-lg font-semibold tracking-tight">grail</span>
-          <nav className="flex gap-6 text-sm">
+          <span className="inline-flex items-center gap-1.5 font-serif-brand text-2xl italic tracking-tight">
+            <FourPointStar className="h-3.5 w-3.5 text-stone-800 dark:text-stone-200" />
+            grail
+          </span>
+
+          <nav className="relative grid grid-cols-2 rounded-full bg-stone-200/75 p-1 dark:bg-white/[0.07]">
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute bottom-1 left-1 top-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-white/15 dark:shadow-[0_0_14px_rgba(255,255,255,0.14)] ${
+                tab === 'inspo' ? 'translate-x-full' : 'translate-x-0'
+              }`}
+            />
             {(['shop', 'inspo'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={tab === t ? 'underline underline-offset-8' : 'text-neutral-500'}>
-                {t === 'shop' ? 'shopping' : 'inspo'}
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`relative z-10 w-20 rounded-full py-1 text-center text-xs font-medium transition-colors duration-200 ${
+                  tab === t
+                    ? 'text-stone-900 dark:text-white'
+                    : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
+                }`}
+              >
+                {t === 'shop' ? 'wishlist' : 'inspo'}
               </button>
             ))}
           </nav>
+
           <div className="relative">
-            <button aria-label="data and backup" onClick={() => setMenu((m) => !m)}><Settings size={18} /></button>
+            <button
+              aria-label="settings"
+              onClick={() => setMenu((m) => !m)}
+              className="grid h-9 w-9 place-items-center rounded-full text-stone-600 transition hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-white/10 dark:hover:text-white"
+            >
+              <Settings size={17} />
+            </button>
             {menu && (
-              <div className="absolute right-0 mt-3 w-44 border border-neutral-200 bg-white text-sm dark:border-neutral-800 dark:bg-black">
-                <button className={item} onClick={() => { exportBackup(); setMenu(false) }}>export backup</button>
-                <button className={item} onClick={() => file.current?.click()}>import backup</button>
-              </div>
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setMenu(false)} />
+                <div className="animate-fade-up absolute right-0 z-40 mt-2 w-48 rounded-2xl border border-stone-200/80 bg-white p-1.5 shadow-xl dark:border-white/10 dark:bg-[#1A1A1E]">
+                  <button
+                    className={menuItem}
+                    onClick={() => {
+                      setDark((d) => !d)
+                      setMenu(false)
+                    }}
+                  >
+                    {dark ? <Sun size={14} /> : <Moon size={14} />}
+                    {dark ? 'light mode' : 'dark mode'}
+                  </button>
+                  <button
+                    className={menuItem}
+                    onClick={() => {
+                      exportBackup()
+                      setMenu(false)
+                      showToast('backup exported')
+                    }}
+                  >
+                    <Download size={14} /> export backup
+                  </button>
+                  <button className={menuItem} onClick={() => file.current?.click()}>
+                    <Upload size={14} /> import backup
+                  </button>
+                </div>
+              </>
             )}
             <input
               ref={file}
@@ -46,25 +298,60 @@ export default function App() {
                 if (!f) return
                 try {
                   await importBackup(f)
-                  alert('backup imported, you’re good.')
+                  showToast('backup imported')
                 } catch (err) {
-                  alert('import failed: ' + (err instanceof Error ? err.message : 'couldn’t read that file'))
+                  showToast(err instanceof Error ? err.message : 'import failed')
                 }
               }}
             />
           </div>
         </div>
       </header>
-      <main className="pb-24">{tab === 'shop' ? <Shopping /> : <Inspo />}</main>
-      <button
-        aria-label="quick add"
-        onClick={() => setAdding(true)}
-        className="fixed bottom-6 right-5 z-30 grid h-14 w-14 place-items-center rounded-full bg-black text-white shadow-lg dark:bg-white dark:text-black"
-        style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
-      >
-        <Plus />
-      </button>
-      {adding && <QuickAdd initial={tab} onClose={() => setAdding(false)} />}
+
+      <main className="flex-1 pb-12">
+        {tab === 'shop' ? (
+          <Shopping onEdit={(item) => setEditing(item)} />
+        ) : (
+          <Inspo onToast={showToast} />
+        )}
+      </main>
+
+      <footer className="pb-6 pt-12 text-center text-xs text-stone-400 dark:text-stone-500">
+        <a
+          href="https://github.com/cynjiang"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 transition hover:text-stone-700 dark:hover:text-stone-300"
+        >
+          <FourPointStar className="h-2.5 w-2.5" />
+          made by cyn
+        </a>
+      </footer>
+
+      <StarScrollbar />
+      <StarFab onClick={() => setAdding(true)} />
+
+      {toast && (
+        <div className="animate-fade-up fixed bottom-24 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-stone-900 px-4 py-2 text-xs font-medium text-white shadow-lg dark:bg-white dark:text-stone-950">
+          {toast}
+        </div>
+      )}
+
+      {(adding || editing) && (
+        <QuickAdd
+          initial={tab}
+          editing={editing}
+          initialBlob={pastedBlob}
+          initialUrl={pastedUrl}
+          onClose={() => {
+            setAdding(false)
+            setEditing(undefined)
+            setPastedBlob(undefined)
+            setPastedUrl(undefined)
+          }}
+          onToast={showToast}
+        />
+      )}
     </div>
   )
 }
