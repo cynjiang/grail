@@ -84,7 +84,7 @@ const cleanTitle = (t: string) =>
     .trim()
 
 // bot-wall pages have a <title> too: never save those as the product name
-const BLOCKED = /access denied|just a moment|attention required|are you a (human|robot)|captcha|verify you are|403 forbidden|pardon our interruption|request blocked/i
+const BLOCKED = /access denied|just a moment|attention required|are you a (human|robot)|robot or human|client challenge|human verification|security check|captcha|verify you are|403 forbidden|pardon our interruption|request blocked/i
 
 function parse(html: string, page: string): Info {
   const m = metaMap(html)
