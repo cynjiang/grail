@@ -45,7 +45,3 @@ export function slugTitle(raw: string): string {
     return ''
   }
 }
-
-export const parseTags = (s: string): string[] => [
-  ...new Set(s.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)),
-]

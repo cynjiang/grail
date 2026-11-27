@@ -7,13 +7,13 @@ const toB64 = (b: Blob) =>
     r.onerror = () => rej(r.error)
     r.readAsDataURL(b)
   })
-const toBlob = async (s: string | null) => (s ? await (await fetch(s)).blob() : undefined)
+const toBlob = async (s: string) => await (await fetch(s)).blob()
 
 export async function exportBackup() {
   const wishlist = await Promise.all(
-    (await db.wishlist.toArray()).map(async ({ id: _id, image, ...rest }) => ({
+    (await db.wishlist.toArray()).map(async ({ id: _id, images, ...rest }) => ({
       ...rest,
-      image: image ? await toB64(image) : null,
+      images: await Promise.all(images.map(toB64)),
     })),
   )
   const inspo = await Promise.all(
@@ -36,10 +36,13 @@ export async function importBackup(file: File) {
   const data = JSON.parse(await file.text())
   if (data.app !== 'starinspo') throw new Error('not a starinspo backup file')
   const wishlist = await Promise.all(
-    (data.wishlist ?? []).map(async (s: any) => ({ ...s, image: await toBlob(s.image) })),
+    (data.wishlist ?? []).map(async (s: any) => ({
+      ...s,
+      images: await Promise.all((s.images ?? []).map(toBlob)),
+    })),
   )
   const inspo = await Promise.all(
-    (data.inspo ?? []).map(async (s: any) => ({ ...s, image: await toBlob(s.image) })),
+    (data.inspo ?? []).map(async (s: any) => ({ ...s, image: s.image ? await toBlob(s.image) : undefined })),
   )
   await db.transaction('rw', db.wishlist, db.inspo, async () => {
     await db.wishlist.bulkAdd(wishlist)

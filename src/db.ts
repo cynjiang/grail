@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie'
 
 export interface WishlistItem {
   id?: number
-  image?: Blob
+  images: Blob[]
   title?: string
   price?: number
   store: string
