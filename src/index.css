@@ -99,3 +99,17 @@
 .animate-sheet-down {
   animation: sheetDown 190ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
+
+/* tailwind v4 resets buttons to the default arrow: put the pointer back */
+@layer base {
+  button:not(:disabled),
+  [role='button'],
+  summary,
+  select,
+  label:has(input[type='file']) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}

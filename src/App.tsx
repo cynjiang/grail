@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download, Moon, Settings, Sun, Upload } from 'lucide-react'
 import Wishlist from './components/Wishlist'
 import Inspo from './components/Inspo'
 import QuickAdd from './components/QuickAdd'
+import ItemViewer from './components/ItemViewer'
+import { fmtDate } from './utils/format'
 import { db, type WishlistItem } from './db'
 import { exportBackup, importBackup } from './utils/backup'
 
@@ -77,48 +79,79 @@ function StarFab({ onClick }: { onClick: () => void }) {
   useEffect(() => () => cancelAnimationFrame(raf.current), [])
 
   return (
-    <button
-      aria-label="quick add"
-      onClick={onClick}
-      onMouseEnter={start}
-      onMouseLeave={stop}
-      className="fixed bottom-6 right-9 z-30 grid h-16 w-16 place-items-center text-stone-900 drop-shadow-lg transition-transform duration-300 hover:scale-110 active:scale-95 dark:text-white"
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-11 z-30 flex justify-center"
       style={{ marginBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div ref={spinRef} className="relative grid h-full w-full place-items-center will-change-transform">
-        <FourPointStar className="h-full w-full" />
-        <BubblyPlus className="absolute h-4 w-4 text-white dark:text-stone-950" />
-      </div>
-    </button>
+      <button
+        aria-label="quick add"
+        onClick={onClick}
+        onMouseEnter={start}
+        onMouseLeave={stop}
+        className="pointer-events-auto grid h-16 w-16 place-items-center text-stone-900 drop-shadow-lg transition-transform duration-300 hover:scale-110 active:scale-95 dark:text-white"
+      >
+        <div ref={spinRef} className="relative grid h-full w-full place-items-center will-change-transform">
+          <FourPointStar className="h-full w-full" />
+          <BubblyPlus className="absolute h-4 w-4 text-white dark:text-stone-950" />
+        </div>
+      </button>
+    </div>
   )
 }
 
 function StarScrollbar() {
   const [scrollable, setScrollable] = useState(false)
+  const [label, setLabel] = useState('')
+  const [show, setShow] = useState(false)
   const trackRef = useRef<HTMLDivElement>(null)
   const thumbRef = useRef<HTMLDivElement>(null)
+  const labelRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
+  const hovering = useRef(false)
+  const hideTimer = useRef(0)
+
+  const flash = useCallback(() => {
+    setShow(true)
+    window.clearTimeout(hideTimer.current)
+    if (!dragging.current && !hovering.current) hideTimer.current = window.setTimeout(() => setShow(false), 1100)
+  }, [])
 
   useEffect(() => {
+    let frame = 0
     const sync = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight
       setScrollable(max > 24)
       const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0
-      if (thumbRef.current) {
-        thumbRef.current.style.top = `${ratio * 100}%`
-      }
+      if (thumbRef.current) thumbRef.current.style.top = `${ratio * 100}%`
+      if (labelRef.current) labelRef.current.style.top = `${ratio * 100}%`
+      let best = 0
+      document.querySelectorAll<HTMLElement>('[data-ts]').forEach((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.bottom > 72 && r.top < window.innerHeight) best = Math.max(best, Number(el.dataset.ts))
+      })
+      setLabel(best ? fmtDate(best) : '')
+    }
+    const onScroll = () => {
+      if (!frame)
+        frame = requestAnimationFrame(() => {
+          frame = 0
+          sync()
+          flash()
+        })
     }
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(document.body)
-    window.addEventListener('scroll', sync, { passive: true })
+    window.addEventListener('scroll', onScroll, { passive: true })
     window.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
-      window.removeEventListener('scroll', sync)
+      cancelAnimationFrame(frame)
+      window.clearTimeout(hideTimer.current)
+      window.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', sync)
     }
-  }, [])
+  }, [flash])
 
   const scrollToClientY = (clientY: number) => {
     if (!trackRef.current) return
@@ -135,8 +168,17 @@ function StarScrollbar() {
       ref={trackRef}
       role="scrollbar"
       aria-label="page scroll"
+      onPointerEnter={() => {
+        hovering.current = true
+        setShow(true)
+      }}
+      onPointerLeave={() => {
+        hovering.current = false
+        flash()
+      }}
       onPointerDown={(e) => {
         dragging.current = true
+        setShow(true)
         e.currentTarget.setPointerCapture(e.pointerId)
         scrollToClientY(e.clientY)
       }}
@@ -146,10 +188,21 @@ function StarScrollbar() {
       onPointerUp={(e) => {
         dragging.current = false
         e.currentTarget.releasePointerCapture(e.pointerId)
+        flash()
       }}
-      className="group fixed right-2 top-1/2 z-20 flex h-[60vh] w-5 -translate-y-1/2 cursor-pointer touch-none justify-center select-none"
+      className="group fixed right-1.5 top-1/2 z-20 flex h-[60vh] w-5 -translate-y-1/2 cursor-pointer touch-none justify-center select-none sm:right-2"
     >
       <div className="relative h-full w-[1.5px] rounded-full bg-stone-300/70 transition-colors group-hover:bg-stone-400/80 dark:bg-white/15 dark:group-hover:bg-white/25">
+        <div
+          ref={labelRef}
+          aria-hidden="true"
+          style={{ top: '0%' }}
+          className={`pointer-events-none absolute right-5 -translate-y-1/2 whitespace-nowrap rounded-full bg-stone-900/90 px-2.5 py-1 text-[11px] font-medium text-white shadow-lg transition-opacity duration-200 dark:bg-white/90 dark:text-stone-950 ${
+            show && label ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          {label}
+        </div>
         <div
           ref={thumbRef}
           className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-stone-800 transition-transform duration-150 group-hover:scale-125 dark:text-stone-200"
@@ -166,6 +219,7 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('wishlist')
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<WishlistItem>()
+  const [viewingId, setViewingId] = useState<number>()
   const [pastedBlob, setPastedBlob] = useState<Blob>()
   const [pastedUrl, setPastedUrl] = useState<string>()
   const [menu, setMenu] = useState(false)
@@ -188,7 +242,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (adding || editing) return
+    if (adding || editing || viewingId != null) return
     const onPaste = async (e: ClipboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
       const img = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'))
@@ -212,7 +266,7 @@ export default function App() {
     }
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
-  }, [adding, editing, tab])
+  }, [adding, editing, viewingId, tab])
 
   const menuItem =
     'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-medium text-stone-700 transition hover:bg-stone-100 dark:text-stone-200 dark:hover:bg-white/10'
@@ -221,15 +275,18 @@ export default function App() {
     <div className="flex min-h-screen flex-col bg-[#FAF9F7] text-[#141413] transition-colors dark:bg-[#0E0E10] dark:text-[#F5F5F4]">
       <header className="sticky top-0 z-30 border-b border-stone-200/70 bg-[#FAF9F7]/85 backdrop-blur-md dark:border-white/10 dark:bg-[#0E0E10]/85">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <span className="inline-flex items-center gap-1.5 font-serif-brand text-2xl italic tracking-tight">
+          <a
+            href="/"
+            className="inline-flex select-none items-center gap-1.5 font-serif-brand text-2xl italic tracking-tight transition-opacity hover:opacity-80"
+          >
             <FourPointStar className="h-3.5 w-3.5 text-stone-800 dark:text-stone-200" />
             starinspo
-          </span>
+          </a>
 
           <nav className="relative grid grid-cols-2 rounded-full bg-stone-200/75 p-1 dark:bg-white/[0.07]">
             <span
               aria-hidden="true"
-              className={`pointer-events-none absolute bottom-1 left-1 top-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-white/15 dark:shadow-[0_0_14px_rgba(255,255,255,0.14)] ${
+              className={`pointer-events-none absolute bottom-1 left-1 top-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm ring-1 ring-transparent transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] dark:bg-white/25 dark:ring-white/15 ${
                 tab === 'inspo' ? 'translate-x-full' : 'translate-x-0'
               }`}
             />
@@ -308,15 +365,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 pb-12">
+      <main className="flex-1 pb-24 pr-6 xl:pr-0">
         {tab === 'wishlist' ? (
-          <Wishlist onEdit={(item) => setEditing(item)} />
+          <Wishlist onOpen={(item) => setViewingId(item.id)} onEdit={(item) => setEditing(item)} />
         ) : (
           <Inspo onToast={showToast} />
         )}
       </main>
 
-      <footer className="pb-6 pt-12 text-center text-xs text-stone-400 dark:text-stone-500">
+      <footer className="pb-3 pt-4 text-center text-xs text-stone-400 dark:text-stone-500">
         <a
           href="https://github.com/cynjiang"
           target="_blank"
@@ -332,9 +389,20 @@ export default function App() {
       <StarFab onClick={() => setAdding(true)} />
 
       {toast && (
-        <div className="animate-fade-up fixed bottom-24 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-stone-900 px-4 py-2 text-xs font-medium text-white shadow-lg dark:bg-white dark:text-stone-950">
+        <div className="animate-fade-up fixed bottom-28 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full bg-stone-900 px-4 py-2 text-xs font-medium text-white shadow-lg dark:bg-white dark:text-stone-950">
           {toast}
         </div>
+      )}
+
+      {viewingId != null && (
+        <ItemViewer
+          id={viewingId}
+          onClose={() => setViewingId(undefined)}
+          onEdit={(item) => {
+            setViewingId(undefined)
+            setEditing(item)
+          }}
+        />
       )}
 
       {(adding || editing) && (
