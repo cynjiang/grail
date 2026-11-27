@@ -58,10 +58,6 @@ public/
   icon-512.png         pwa app icon (512x512)
   icons.svg            default svg icon sprite
 src/
-  assets/
-    hero.png           static image asset
-    react.svg          react logo asset
-    vite.svg           vite logo asset
   components/
     Inspo.tsx          masonry board, tag filter, lightbox
     QuickAdd.tsx       add/edit modal: paste a link, upload or paste an image
@@ -93,7 +89,6 @@ link lookup is one serverless function in `api/metadata.ts`.
 
 ## roadmap
 
-- drag and drop image uploads
 - smarter link/image fallbacks for sites like pinterest and storefronts that block basic scrapers
 - filtering & sorting on wishlist (by brand, price, status, etc)
 - tag search / multi-tag filtering on inspo
