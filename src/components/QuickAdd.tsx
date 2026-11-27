@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { ImagePlus, Link2, Loader2, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { ImagePlus, Link2, Loader2, Plus, Trash2, X } from 'lucide-react'
 import { db, type WishlistItem } from '../db'
-import { cleanUrl, parseTags, slugTitle, storeName } from '../utils/urlCleaner'
+import { cleanUrl, slugTitle, storeName } from '../utils/urlCleaner'
 import { useObjectUrl } from '../utils/useObjectUrl'
 
 type Mode = 'wishlist' | 'inspo'
@@ -20,23 +21,57 @@ interface Props {
   onToast: (msg: string) => void
 }
 
+function Thumb({ blob, cover, onPick, onRemove }: { blob: Blob; cover: boolean; onPick: () => void; onRemove: () => void }) {
+  const src = useObjectUrl(blob)
+  return (
+    <div className="relative h-14 w-12 shrink-0">
+      <button
+        onClick={onPick}
+        aria-label={cover ? 'cover photo' : 'make cover photo'}
+        className={`h-full w-full overflow-hidden rounded-lg ring-2 transition ${
+          cover ? 'ring-stone-900 dark:ring-white' : 'ring-transparent opacity-70 hover:opacity-100'
+        }`}
+      >
+        {src && <img src={src} alt="" className="h-full w-full object-cover" />}
+      </button>
+      <button
+        aria-label="remove photo"
+        onClick={onRemove}
+        className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-stone-900 text-white dark:bg-white dark:text-stone-950"
+      >
+        <X size={10} />
+      </button>
+    </div>
+  )
+}
+
 export default function QuickAdd({ initial, editing, initialBlob, initialUrl, onClose, onToast }: Props) {
   const isEdit = !!editing
   const [mode, setMode] = useState<Mode>(editing ? 'wishlist' : initial)
   const [url, setUrl] = useState(editing?.url ?? initialUrl ?? '')
-  const [blob, setBlob] = useState<Blob | undefined>(editing?.image ?? initialBlob)
+  const [images, setImages] = useState<Blob[]>(editing?.images ?? (initialBlob ? [initialBlob] : []))
   const [title, setTitle] = useState(editing?.title ?? '')
   const [price, setPrice] = useState(editing?.price != null ? String(editing.price) : '')
   const [store, setStore] = useState(editing?.store ?? '')
   const [notes, setNotes] = useState(editing?.notes ?? '')
-  const [tags, setTags] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+  const [addingTag, setAddingTag] = useState(false)
+  const [newTag, setNewTag] = useState('')
   const [busy, setBusy] = useState(false)
   const [miss, setMiss] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [closing, setClosing] = useState(false)
   const backdropDown = useRef(false)
   const last = useRef(editing?.url ?? '')
-  const preview = useObjectUrl(blob)
+  const cover = useObjectUrl(images[0])
+
+  const existingTags =
+    useLiveQuery(
+      async () => [...new Set((await db.inspo.toArray()).flatMap((i) => i.tags))].sort(),
+      [],
+    ) ?? []
+
+  const allTags = [...new Set([...existingTags, ...tags])].sort()
 
   const requestClose = useCallback(() => {
     if (closing) return
@@ -44,48 +79,58 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
     window.setTimeout(onClose, 190)
   }, [closing, onClose])
 
-  const applyBlob = useCallback((f: Blob) => {
-    setBlob(f)
+  const addImages = useCallback((fs: Blob[]) => {
+    if (!fs.length) return
+    setImages((a) => [...a, ...fs])
     setMiss(false)
   }, [])
 
-  const lookup = useCallback(async (raw: string) => {
-    const u = cleanUrl(raw)
-    setUrl(u)
-    if (!/^https?:\/\//i.test(u) || u === last.current) return
-    last.current = u
-    setStore((s) => s || storeName(u))
-    setBusy(true)
-    setMiss(false)
-    let gotImage = false
+  const grab = useCallback(async (img: string, ref: string | undefined, append: boolean) => {
     try {
-      const grab = async (img: string) => {
-        const r = await fetch('/api/metadata?image=' + encodeURIComponent(img))
-        const b = r.ok ? await r.blob() : undefined
-        if (b && b.type.startsWith('image/')) {
-          setBlob((x) => x ?? b)
-          gotImage = true
-        }
-      }
-      if (IMG_URL.test(u)) {
-        await grab(u)
-      } else {
-        const m = await (await fetch('/api/metadata?url=' + encodeURIComponent(u))).json()
-        if (m.title) setTitle((t) => t || m.title)
-        else {
-          const fallback = slugTitle(u)
-          if (fallback) setTitle((t) => t || fallback)
-        }
-        if (m.price) setPrice((p) => p || String(m.price))
-        if (m.image) await grab(m.image)
+      const r = await fetch('/api/metadata?image=' + encodeURIComponent(img) + (ref ? '&ref=' + encodeURIComponent(ref) : ''))
+      const b = r.ok ? await r.blob() : undefined
+      if (b && b.type.startsWith('image/')) {
+        setImages((a) => (append || !a.length ? [...a, b] : a))
+        return true
       }
     } catch {
-      const fallback = slugTitle(u)
-      if (fallback) setTitle((t) => t || fallback)
+      /* ignore, manual upload still works */
     }
-    setMiss(!gotImage)
-    setBusy(false)
+    return false
   }, [])
+
+  const lookup = useCallback(
+    async (raw: string) => {
+      const u = cleanUrl(raw)
+      setUrl(u)
+      if (!/^https?:\/\//i.test(u) || u === last.current) return
+      last.current = u
+      setStore((s) => s || storeName(u))
+      setBusy(true)
+      setMiss(false)
+      let gotImage = false
+      try {
+        if (IMG_URL.test(u)) {
+          gotImage = await grab(u, undefined, false)
+        } else {
+          const m = await (await fetch('/api/metadata?url=' + encodeURIComponent(u))).json()
+          if (m.title) setTitle((t) => t || m.title)
+          else {
+            const fallback = slugTitle(u)
+            if (fallback) setTitle((t) => t || fallback)
+          }
+          if (m.price) setPrice((p) => p || String(m.price))
+          if (m.image) gotImage = await grab(m.image, u, false)
+        }
+      } catch {
+        const fallback = slugTitle(u)
+        if (fallback) setTitle((t) => t || fallback)
+      }
+      setMiss(!gotImage)
+      setBusy(false)
+    },
+    [grab],
+  )
 
   useEffect(() => {
     if (initialUrl) lookup(initialUrl)
@@ -93,13 +138,13 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') requestClose()
+      if (e.key === 'Escape' && !addingTag) requestClose()
     }
     const onPaste = (e: ClipboardEvent) => {
-      const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'))
-      if (f) {
+      const fs = Array.from(e.clipboardData?.files ?? []).filter((x) => x.type.startsWith('image/'))
+      if (fs.length) {
         e.preventDefault()
-        applyBlob(f)
+        addImages(fs)
         return
       }
       const t = e.clipboardData?.getData('text').trim() ?? ''
@@ -111,12 +156,30 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('paste', onPaste)
     }
-  }, [applyBlob, lookup, requestClose])
+  }, [addImages, lookup, requestClose, addingTag])
 
-  const canSave =
-    mode === 'wishlist'
-      ? !!(title.trim() || blob || url.trim() || store.trim())
-      : !!blob
+  async function onDrop(e: DragEvent) {
+    e.preventDefault()
+    const fs = Array.from(e.dataTransfer.files).filter((x) => x.type.startsWith('image/'))
+    if (fs.length) return addImages(fs)
+    const uri = (e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain')).split('\n')[0].trim()
+    if (!/^https?:\/\//i.test(uri)) return
+    if (IMG_URL.test(uri) || /pinimg\.com/i.test(uri)) {
+      setBusy(true)
+      const ok = await grab(uri, undefined, true)
+      setBusy(false)
+      setMiss(!ok)
+    } else lookup(uri)
+  }
+
+  const commitNewTag = () => {
+    const clean = newTag.trim().toLowerCase()
+    if (clean && !tags.includes(clean)) setTags((prev) => [...prev, clean])
+    setNewTag('')
+    setAddingTag(false)
+  }
+
+  const canSave = mode === 'wishlist' ? !!(title.trim() || images.length || url.trim() || store.trim()) : images.length > 0
 
   async function save() {
     if (!canSave) return
@@ -127,7 +190,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
         price: parsedPrice != null && !Number.isNaN(parsedPrice) ? parsedPrice : undefined,
         store: store.trim() || storeName(url),
         url: url.trim() ? cleanUrl(url) : undefined,
-        image: blob,
+        images,
         notes: notes.trim() || undefined,
       }
       if (editing?.id) {
@@ -139,8 +202,8 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
       }
     } else {
       await db.inspo.add({
-        image: blob!,
-        tags: parseTags(tags),
+        image: images[0],
+        tags,
         sourceUrl: url.trim() ? cleanUrl(url) : undefined,
         createdAt: Date.now(),
       })
@@ -160,6 +223,8 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
     requestClose()
   }
 
+  const onPinterest = /pinterest|pin\.it/i.test(url)
+
   return (
     <div
       className={`fixed inset-0 z-50 flex items-end justify-center bg-black/45 backdrop-blur-[2px] sm:items-center sm:p-4 ${
@@ -177,10 +242,12 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
         role="dialog"
         aria-modal="true"
         aria-label={isEdit ? 'edit item' : 'add item'}
-        className={`max-h-[92vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-3xl bg-[#FAF9F7] p-5 pb-7 shadow-2xl dark:bg-[#161619] sm:rounded-3xl sm:border sm:border-stone-200/80 sm:pb-5 dark:sm:border-white/10 ${
+        className={`no-scrollbar max-h-[92vh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-3xl bg-[#FAF9F7] p-5 pb-7 shadow-2xl dark:bg-[#161619] sm:rounded-3xl sm:border sm:border-stone-200/80 sm:pb-5 dark:sm:border-white/10 ${
           closing ? 'animate-sheet-down' : 'animate-sheet-up'
         }`}
         onClick={(e) => e.stopPropagation()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
       >
         <div className="mx-auto h-1 w-10 rounded-full bg-stone-300 dark:bg-white/15 sm:hidden" />
 
@@ -195,7 +262,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
                   onClick={() => setMode(m)}
                   className={`rounded-full px-3.5 py-1 text-xs font-medium transition ${
                     mode === m
-                      ? 'bg-white text-stone-900 shadow-xs dark:bg-white/15 dark:text-white'
+                      ? 'bg-white text-stone-900 shadow-xs dark:bg-white/25 dark:text-white'
                       : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200'
                   }`}
                 >
@@ -230,39 +297,77 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
             }}
             onBlur={() => url && lookup(url)}
           />
-          {busy && (
-            <Loader2 size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-stone-400" />
-          )}
+          {busy && <Loader2 size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-stone-400" />}
         </div>
 
-        <label className="group relative block cursor-pointer overflow-hidden rounded-2xl border border-dashed border-stone-300 bg-stone-100/60 transition hover:border-stone-400 dark:border-white/15 dark:bg-white/[0.03] dark:hover:border-white/30">
-          {preview ? (
-            <div className="relative flex max-h-56 items-center justify-center bg-stone-100 dark:bg-black/40">
-              <img src={preview} alt="selected" className="max-h-56 w-full object-contain" />
-              <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
-                swap photo
-              </span>
-            </div>
-          ) : (
+        {images.length === 0 ? (
+          <label className="group relative block cursor-pointer overflow-hidden rounded-2xl border border-dashed border-stone-300 bg-stone-100/60 transition hover:border-stone-400 dark:border-white/15 dark:bg-white/[0.03] dark:hover:border-white/30">
             <div className="flex flex-col items-center gap-1.5 py-7 text-stone-500 dark:text-stone-400">
               <ImagePlus size={20} strokeWidth={1.75} className="transition group-hover:scale-105" />
-              <span className="text-xs font-medium">upload photo or paste (ctrl/cmd+v)</span>
+              <span className="text-xs font-medium">upload, drop or paste photos (ctrl/cmd+v)</span>
             </div>
-          )}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) applyBlob(f)
-            }}
-          />
-        </label>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addImages(Array.from(e.target.files ?? []))
+                e.target.value = ''
+              }}
+            />
+          </label>
+        ) : (
+          <div className="space-y-2">
+            <div className="relative flex max-h-56 items-center justify-center overflow-hidden rounded-2xl border border-stone-200/80 bg-stone-100 dark:border-white/10 dark:bg-black/40">
+              {cover && <img src={cover} alt="cover" className="max-h-56 w-full object-contain" />}
+              <button
+                aria-label="remove cover photo"
+                onClick={() => setImages((a) => a.slice(1))}
+                className="absolute right-2.5 top-2.5 grid h-8 w-8 place-items-center rounded-full border border-white/20 bg-black/60 text-white backdrop-blur-sm transition hover:bg-black/80"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            {mode === 'wishlist' && (
+              <>
+                <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5 pl-0.5 pr-2 pt-1.5">
+                  {images.map((b, i) => (
+                    <Thumb
+                      key={i}
+                      blob={b}
+                      cover={i === 0}
+                      onPick={() => setImages((a) => [a[i], ...a.filter((_, j) => j !== i)])}
+                      onRemove={() => setImages((a) => a.filter((_, j) => j !== i))}
+                    />
+                  ))}
+                  <label className="grid h-14 w-12 shrink-0 cursor-pointer place-items-center rounded-lg border border-dashed border-stone-300 text-stone-500 transition hover:border-stone-400 dark:border-white/20 dark:text-stone-400 dark:hover:border-white/40">
+                    <Plus size={16} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        addImages(Array.from(e.target.files ?? []))
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+                {images.length > 1 && (
+                  <p className="text-xs text-stone-500 dark:text-stone-400">first photo is the cover. tap another to make it the cover.</p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
-        {miss && !blob && (
+        {miss && images.length === 0 && (
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            site blocked auto-image — paste a screenshot or upload one above.
+            {onPinterest
+              ? 'pinterest wouldn’t share that one. right-click the pin, copy image, then paste here (or drag it in).'
+              : 'site blocked auto-image. paste a screenshot or upload one above.'}
           </p>
         )}
 
@@ -274,12 +379,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
           >
             <div className="overflow-hidden">
               <div className="space-y-2.5 p-0.5">
-                <input
-                  className={field}
-                  placeholder="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
+                <input className={field} placeholder="title" value={title} onChange={(e) => setTitle(e.target.value)} />
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-stone-400 dark:text-stone-500">
@@ -297,19 +397,9 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
                       }}
                     />
                   </div>
-                  <input
-                    className={field}
-                    placeholder="brand"
-                    value={store}
-                    onChange={(e) => setStore(e.target.value)}
-                  />
+                  <input className={field} placeholder="brand" value={store} onChange={(e) => setStore(e.target.value)} />
                 </div>
-                <input
-                  className={field}
-                  placeholder="size, color, fit notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
+                <input className={field} placeholder="size, color, fit notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
             </div>
           </div>
@@ -320,13 +410,56 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
             }`}
           >
             <div className="overflow-hidden">
-              <div className="p-0.5">
-                <input
-                  className={field}
-                  placeholder="tags: outerwear, leather, brown"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                />
+              <div className="flex flex-wrap items-center gap-1.5 p-0.5">
+                {allTags.map((t) => {
+                  const active = tags.includes(t)
+                  return (
+                    <button
+                      type="button"
+                      key={t}
+                      onClick={() =>
+                        setTags((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
+                      }
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition active:scale-95 ${
+                        active
+                          ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-950'
+                          : 'bg-stone-200/80 text-stone-600 hover:bg-stone-200 dark:bg-white/10 dark:text-stone-300 dark:hover:bg-white/20'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  )
+                })}
+
+                {addingTag ? (
+                  <input
+                    autoFocus
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onBlur={commitNewTag}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ',') {
+                        e.preventDefault()
+                        commitNewTag()
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault()
+                        setNewTag('')
+                        setAddingTag(false)
+                      }
+                    }}
+                    placeholder="tag name"
+                    aria-label="new tag"
+                    className="w-24 rounded-full bg-white px-3 py-1 text-xs text-stone-900 placeholder:text-stone-400 outline-none ring-1 ring-stone-900/20 dark:bg-white/10 dark:text-white dark:placeholder:text-stone-500 dark:ring-white/30"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddingTag(true)}
+                    className="inline-flex items-center gap-1 rounded-full border border-dashed border-stone-300 px-3 py-1 text-xs font-medium text-stone-500 transition hover:border-stone-400 hover:text-stone-800 active:scale-95 dark:border-white/20 dark:text-stone-400 dark:hover:border-white/40 dark:hover:text-white"
+                  >
+                    new <Plus size={12} />
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -347,9 +480,7 @@ export default function QuickAdd({ initial, editing, initialBlob, initialUrl, on
               <Trash2 size={15} className="shrink-0" />
               <span
                 className={`grid transition-[grid-template-columns,opacity,margin] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                  confirmDel
-                    ? 'ml-1.5 grid-cols-[1fr] opacity-100'
-                    : 'ml-0 grid-cols-[0fr] opacity-0'
+                  confirmDel ? 'ml-1.5 grid-cols-[1fr] opacity-100' : 'ml-0 grid-cols-[0fr] opacity-0'
                 }`}
               >
                 <span className="overflow-hidden whitespace-nowrap">confirm</span>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ExternalLink, ImagePlus, Trash2, X } from 'lucide-react'
+import { Check, ExternalLink, ImagePlus, Plus, Trash2, X } from 'lucide-react'
 import { db, type InspoItem } from '../db'
-import { cleanUrl, parseTags } from '../utils/urlCleaner'
+import { cleanUrl } from '../utils/urlCleaner'
+import { fmtDateTime } from '../utils/format'
 import { useObjectUrl } from '../utils/useObjectUrl'
 
 function Tile({ p, onOpen }: { p: InspoItem; onOpen: () => void }) {
@@ -11,6 +12,7 @@ function Tile({ p, onOpen }: { p: InspoItem; onOpen: () => void }) {
 
   return (
     <button
+      data-ts={p.createdAt}
       onClick={onOpen}
       className="group block w-full overflow-hidden rounded-2xl bg-stone-200/60 transition active:scale-[0.98] dark:bg-white/[0.05]"
     >
@@ -31,19 +33,25 @@ function Tile({ p, onOpen }: { p: InspoItem; onOpen: () => void }) {
 
 function Lightbox({
   p,
+  existingTags,
   onClose,
   onToast,
 }: {
   p: InspoItem
+  existingTags: string[]
   onClose: () => void
   onToast: (msg: string) => void
 }) {
   const src = useObjectUrl(p.image)
-  const [tags, setTags] = useState(p.tags.join(', '))
+  const [tags, setTags] = useState<string[]>(p.tags)
+  const [addingTag, setAddingTag] = useState(false)
+  const [newTag, setNewTag] = useState('')
   const [sourceUrl, setSourceUrl] = useState(p.sourceUrl ?? '')
   const [confirmDel, setConfirmDel] = useState(false)
   const [closing, setClosing] = useState(false)
   const backdropDown = useRef(false)
+
+  const allTags = [...new Set([...existingTags, ...tags])].sort()
 
   const requestClose = useCallback(() => {
     if (closing) return
@@ -53,17 +61,35 @@ function Lightbox({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') requestClose()
+      if (e.key === 'Escape' && !addingTag) requestClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [requestClose])
+  }, [requestClose, addingTag])
 
-  const saveMeta = () => {
-    db.inspo.update(p.id!, {
-      tags: parseTags(tags),
+  const saveMeta = async (nextTags = tags, notify = false) => {
+    await db.inspo.update(p.id!, {
+      tags: nextTags,
       sourceUrl: sourceUrl.trim() ? cleanUrl(sourceUrl) : undefined,
     })
+    if (notify) onToast('saved')
+  }
+
+  const toggleTag = (t: string) => {
+    const next = tags.includes(t) ? tags.filter((x) => x !== t) : [...tags, t]
+    setTags(next)
+    saveMeta(next, false)
+  }
+
+  const commitNewTag = () => {
+    const clean = newTag.trim().toLowerCase()
+    if (clean && !tags.includes(clean)) {
+      const next = [...tags, clean]
+      setTags(next)
+      saveMeta(next, false)
+    }
+    setNewTag('')
+    setAddingTag(false)
   }
 
   return (
@@ -114,29 +140,79 @@ function Lightbox({
           <img
             src={src}
             alt=""
-            className="max-h-[58vh] w-auto max-w-full rounded-2xl object-contain"
+            className="max-h-[54vh] w-auto max-w-full rounded-2xl object-contain"
           />
         )}
 
-        <div className="w-full space-y-2.5 rounded-2xl bg-white/10 p-3.5 backdrop-blur-md">
-          <input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            onBlur={saveMeta}
-            placeholder="tags, comma separated"
-            aria-label="tags"
-            className="w-full rounded-xl bg-black/30 px-3 py-2 text-xs text-white placeholder:text-white/40 outline-none focus:ring-1 focus:ring-white/30"
-          />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            saveMeta(tags, true)
+          }}
+          className="w-full space-y-2.5 rounded-2xl bg-white/10 p-3.5 backdrop-blur-md"
+        >
+          <p className="text-[11px] text-white/50">added {fmtDateTime(p.createdAt)}</p>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {allTags.map((t) => {
+              const active = tags.includes(t)
+              return (
+                <button
+                  type="button"
+                  key={t}
+                  onClick={() => toggleTag(t)}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition active:scale-95 ${
+                    active
+                      ? 'bg-white text-stone-950'
+                      : 'bg-white/10 text-white/75 hover:bg-white/20 hover:text-white'
+                  }`}
+                >
+                  {t}
+                </button>
+              )
+            })}
+
+            {addingTag ? (
+              <input
+                autoFocus
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onBlur={commitNewTag}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault()
+                    commitNewTag()
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setNewTag('')
+                    setAddingTag(false)
+                  }
+                }}
+                placeholder="tag name"
+                aria-label="new tag"
+                className="w-24 rounded-full bg-black/40 px-2.5 py-1 text-[11px] text-white placeholder:text-white/40 outline-none ring-1 ring-white/30"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingTag(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-dashed border-white/25 px-2.5 py-1 text-[11px] font-medium text-white/70 transition hover:border-white/50 hover:text-white active:scale-95"
+              >
+                new <Plus size={11} />
+              </button>
+            )}
+          </div>
+
           <input
             value={sourceUrl}
             onChange={(e) => setSourceUrl(e.target.value)}
-            onBlur={saveMeta}
+            onBlur={() => saveMeta(tags, false)}
             placeholder="source link"
             aria-label="source link"
             className="w-full rounded-xl bg-black/30 px-3 py-2 text-xs text-white placeholder:text-white/40 outline-none focus:ring-1 focus:ring-white/30"
           />
 
-          <div className="flex items-center justify-between pt-1 text-xs text-white">
+          <div className="flex items-center gap-2 pt-1 text-xs text-white">
             {sourceUrl.trim() ? (
               <a
                 href={cleanUrl(sourceUrl)}
@@ -149,7 +225,9 @@ function Lightbox({
             ) : (
               <span />
             )}
+            <span className="flex-1" />
             <button
+              type="button"
               aria-label={confirmDel ? 'confirm delete' : 'delete'}
               onClick={async () => {
                 if (!confirmDel) {
@@ -178,8 +256,14 @@ function Lightbox({
                 <span className="overflow-hidden whitespace-nowrap">confirm</span>
               </span>
             </button>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-xs font-medium text-stone-950 transition hover:bg-stone-200 active:scale-95"
+            >
+              <Check size={12} /> save
+            </button>
           </div>
-        </div>
+        </form>
       </div>
     </div>
   )
@@ -201,6 +285,7 @@ export default function Inspo({ onToast }: { onToast: (msg: string) => void }) {
   const [tag, setTag] = useState('')
   const [openId, setOpenId] = useState<number>()
   const cols = useColCount()
+
   const tags = [...new Set(all.flatMap((i) => i.tags))].sort()
   const active = tags.includes(tag) ? tag : ''
   const shown = active ? all.filter((i) => i.tags.includes(active)) : all
@@ -258,7 +343,15 @@ export default function Inspo({ onToast }: { onToast: (msg: string) => void }) {
         </div>
       </section>
 
-      {open && <Lightbox key={open.id} p={open} onClose={() => setOpenId(undefined)} onToast={onToast} />}
+      {open && (
+        <Lightbox
+          key={open.id}
+          p={open}
+          existingTags={tags}
+          onClose={() => setOpenId(undefined)}
+          onToast={onToast}
+        />
+      )}
     </>
   )
 }
